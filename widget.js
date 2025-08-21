@@ -1,5 +1,5 @@
 // === Replace with your deployed Apps Script Web App URL ===
-const CW_API_URL = "https://script.google.com/macros/s/AKfycbz7UC-otTJqqJdOuEk_xJ0Sj0cQdYlJTA4pLBqasDepyukjkIeFe0xhJkEGNvNDx899_A/exec"; // e.g. https://script.google.com/macros/s/XXXX/exec
+const CW_API_URL = "https://script.google.com/macros/s/AKfycbz7UC-otTJqqJdOuEk_xJ0Sj0cQdYlJTA4pLBqasDepyukjkIeFe0xhJkEGNvNDx899_A/exec";
 
 (function () {
   class CaptionWidget {
@@ -8,10 +8,11 @@ const CW_API_URL = "https://script.google.com/macros/s/AKfycbz7UC-otTJqqJdOuEk_x
       this.widgetId = hostEl.getAttribute("data-id");
       this.title = hostEl.getAttribute("data-title") || "Caption This";
       this.photo = hostEl.getAttribute("data-photo") || "";
-      this.items = [];     // [{widget,id,text,votes,ts,by}]
+      this.items = [];
       this.currentTab = "top";
-      this.deviceId = this.ensureDeviceId(); // used for "by" and voter id
+      this.deviceId = this.ensureDeviceId();
       this.root = hostEl.attachShadow({ mode: "open" });
+
       this.renderShell();
       this.bindBasics();
       this.loadData();
@@ -46,12 +47,17 @@ const CW_API_URL = "https://script.google.com/macros/s/AKfycbz7UC-otTJqqJdOuEk_x
         .cw-tab.active { background:#111827; color:#fff; }
         .cw-list { display:grid; gap:8px; padding:10px; }
         .cw-item { display:flex; align-items:center; justify-content:space-between; gap:8px; border:1px solid #e5e7eb; border-radius:10px; padding:10px 12px; background:#fff; }
+        .cw-text-wrap { display:flex; flex-direction:column; flex:1; }
         .cw-text { font-size:14px; line-height:1.35; word-break:break-word; }
+        .cw-time { font-size:11px; color:#6b7280; margin-top:4px; }
         .cw-vote { border:0; background:#f3f4f6; padding:6px 10px; border-radius:999px; font-size:13px; cursor:pointer; }
         .cw-vote:disabled { opacity:.6; cursor:not-allowed; }
         .cw-empty { color:#6b7280; font-size:13px; text-align:center; padding:10px; }
         .cw-toast { position:fixed; left:50%; transform:translateX(-50%); bottom:18px; background:#111827; color:#fff; font-size:13px; padding:8px 12px; border-radius:999px; display:none; z-index:2147483647; }
-        @media (max-width: 360px) { .cw-head { font-size:15px } .cw-btn { padding:9px 12px; } }
+        @media (max-width: 360px) {
+          .cw-head { font-size:15px }
+          .cw-btn { padding:9px 12px; }
+        }
       `;
 
       this.root.innerHTML = `
@@ -71,7 +77,7 @@ const CW_API_URL = "https://script.google.com/macros/s/AKfycbz7UC-otTJqqJdOuEk_x
               <button class="cw-tab cw-tab-top active" data-tab="top">Top</button>
               <button class="cw-tab cw-tab-new" data-tab="new">New</button>
             </div>
-            <div class="cw-list"></div>
+            <div class="cw-list"><div class="cw-empty">Loading…</div></div>
           </div>
         </div>
         <div class="cw-toast"></div>
@@ -82,6 +88,7 @@ const CW_API_URL = "https://script.google.com/macros/s/AKfycbz7UC-otTJqqJdOuEk_x
       const ta = this.$(".cw-ta");
       const counter = this.$(".cw-counter");
       const submit = this.$(".cw-submit");
+
       ta.addEventListener("input", () => {
         const left = 140 - ta.value.length;
         counter.textContent = String(left);
@@ -108,8 +115,11 @@ const CW_API_URL = "https://script.google.com/macros/s/AKfycbz7UC-otTJqqJdOuEk_x
       try {
         const res = await fetch(`${CW_API_URL}?action=list&widget=${encodeURIComponent(this.widgetId)}`);
         const json = await res.json();
-        this.items = Array.isArray(json.items) ? json.items : [];
-        this.renderList(); // default Top
+        this.items = Array.isArray(json.items) ? json.items.map(it => ({
+          ...it,
+          tsReadable: this.formatReadable(it.ts)   // ✅ fixed: use backend timestamp
+        })) : [];
+        this.renderList();
       } catch (e) {
         this.toast("Network error");
       }
@@ -124,11 +134,16 @@ const CW_API_URL = "https://script.google.com/macros/s/AKfycbz7UC-otTJqqJdOuEk_x
       };
       const restore = this.btnBusy(submitBtn, true);
       try {
-        const res = await fetch(CW_API_URL, { method: "POST", body: JSON.stringify(payload) });
+        const res = await fetch(CW_API_URL, {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
         const data = await res.json();
         if (data && !data.error && data.id) {
-          // Optimistically add to state and switch to New
-          this.items.unshift(data);
+          this.items.unshift({
+            ...data,
+            tsReadable: this.formatReadable(data.ts) // ✅ fixed: use backend timestamp
+          });
           ta.value = "";
           counterEl.textContent = "140";
           this.currentTab = "new";
@@ -150,7 +165,6 @@ const CW_API_URL = "https://script.google.com/macros/s/AKfycbz7UC-otTJqqJdOuEk_x
     }
 
     async vote(id, btn) {
-      // 1 per device per caption (client-side)
       const voteKey = `cw-voted-${this.widgetId}-${id}`;
       if (localStorage.getItem(voteKey)) {
         this.toast("Already voted");
@@ -169,14 +183,13 @@ const CW_API_URL = "https://script.google.com/macros/s/AKfycbz7UC-otTJqqJdOuEk_x
         });
         const data = await res.json();
         if (data && data.ok) {
-          // Update local state + UI
           localStorage.setItem(voteKey, "1");
           const item = this.items.find(x => x.id === id);
           if (item) item.votes = data.votes;
           btn.textContent = `▲ ${data.votes}`;
-          // If on Top tab, re-sort
+          btn.disabled = true;
           if (this.currentTab === "top") this.renderList();
-        } else if (data && data.error) {
+        } else if (data && data.error === "Already voted") {
           this.toast("Already voted");
         } else {
           this.toast("Network error");
@@ -188,45 +201,64 @@ const CW_API_URL = "https://script.google.com/macros/s/AKfycbz7UC-otTJqqJdOuEk_x
       }
     }
 
-    // ---------- LIST RENDER ----------
     renderList() {
       const listEl = this.$(".cw-list");
       let arr = [...this.items];
+
       if (this.currentTab === "top") {
         arr.sort((a, b) => (b.votes || 0) - (a.votes || 0));
         arr = arr.slice(0, 5);
       } else {
-        arr.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+        arr.sort((a, b) => new Date(b.ts) - new Date(a.ts)); // ✅ compare backend ts
         arr = arr.slice(0, 10);
       }
+
       if (arr.length === 0) {
         listEl.innerHTML = `<div class="cw-empty">No captions yet.</div>`;
         return;
       }
+
       listEl.innerHTML = arr.map(it => `
         <div class="cw-item">
-          <div class="cw-text">${this.escape(it.text)}</div>
+          <div class="cw-text-wrap">
+            <div class="cw-text">${this.escape(it.text)}</div>
+            <div class="cw-time">${this.escape(it.tsReadable)}</div>
+          </div>
           <button class="cw-vote" data-id="${this.escapeAttr(it.id)}">▲ ${Number(it.votes || 0)}</button>
         </div>
       `).join("");
 
-      // bind vote buttons
       this.$$(".cw-vote").forEach(b => {
         b.addEventListener("click", () => this.vote(b.getAttribute("data-id"), b));
       });
     }
 
-    // ---------- UTILS ----------
+    formatReadable(tsNum) {
+      const d = new Date(tsNum);
+      return d.toLocaleString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+    }
+
     btnBusy(btn, busy) {
       if (busy) {
         const old = btn.textContent;
         btn.disabled = true;
         btn.textContent = "Submitting…";
-        return () => { btn.disabled = false; btn.textContent = old; };
+        return () => {
+          btn.disabled = false;
+          btn.textContent = old;
+        };
       } else {
         btn.disabled = false;
       }
     }
+
     toast(msg) {
       const t = this.$(".cw-toast");
       t.textContent = msg;
@@ -234,12 +266,19 @@ const CW_API_URL = "https://script.google.com/macros/s/AKfycbz7UC-otTJqqJdOuEk_x
       clearTimeout(this._toastTimer);
       this._toastTimer = setTimeout(() => (t.style.display = "none"), 1800);
     }
+
     $(sel) { return this.root.querySelector(sel); }
     $$(sel) { return Array.from(this.root.querySelectorAll(sel)); }
-    escape(s = "") { return s.replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c])); }
-    escapeAttr(s = "") { return this.escape(s).replace(/"/g, "&quot;"); }
+
+    escape(s = "") {
+      return s.replace(/[&<>"']/g, c => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+      }[c]));
+    }
+    escapeAttr(s = "") {
+      return this.escape(s).replace(/"/g, "&quot;");
+    }
   }
 
-  // Auto-initialize for all embeds on the page
   document.querySelectorAll(".caption-widget").forEach(el => new CaptionWidget(el));
 })();

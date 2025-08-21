@@ -1,4 +1,3 @@
-// === Replace with your deployed Apps Script Web App URL ===
 const CW_API_URL = "https://script.google.com/macros/s/AKfycbz7UC-otTJqqJdOuEk_xJ0Sj0cQdYlJTA4pLBqasDepyukjkIeFe0xhJkEGNvNDx899_A/exec";
 
 (function () {
@@ -28,7 +27,7 @@ const CW_API_URL = "https://script.google.com/macros/s/AKfycbz7UC-otTJqqJdOuEk_x
       return id;
     }
 
-    // ---------- RENDER ----------
+// render +styling 
     renderShell() {
       const style = `
         :host { box-sizing: border-box; }
@@ -110,14 +109,14 @@ const CW_API_URL = "https://script.google.com/macros/s/AKfycbz7UC-otTJqqJdOuEk_x
       });
     }
 
-    // ---------- NETWORK ----------
+    // data loading and network error
     async loadData() {
       try {
         const res = await fetch(`${CW_API_URL}?action=list&widget=${encodeURIComponent(this.widgetId)}`);
         const json = await res.json();
         this.items = Array.isArray(json.items) ? json.items.map(it => ({
           ...it,
-          tsReadable: this.formatReadable(it.ts)   // ✅ fixed: use backend timestamp
+          tsReadable: this.formatReadable(it.ts)   
         })) : [];
         this.renderList();
       } catch (e) {
@@ -142,7 +141,7 @@ const CW_API_URL = "https://script.google.com/macros/s/AKfycbz7UC-otTJqqJdOuEk_x
         if (data && !data.error && data.id) {
           this.items.unshift({
             ...data,
-            tsReadable: this.formatReadable(data.ts) // ✅ fixed: use backend timestamp
+            tsReadable: this.formatReadable(data.ts) 
           });
           ta.value = "";
           counterEl.textContent = "140";
@@ -209,7 +208,7 @@ const CW_API_URL = "https://script.google.com/macros/s/AKfycbz7UC-otTJqqJdOuEk_x
         arr.sort((a, b) => (b.votes || 0) - (a.votes || 0));
         arr = arr.slice(0, 5);
       } else {
-        arr.sort((a, b) => new Date(b.ts) - new Date(a.ts)); // ✅ compare backend ts
+        arr.sort((a, b) => new Date(b.ts) - new Date(a.ts));
         arr = arr.slice(0, 10);
       }
 
